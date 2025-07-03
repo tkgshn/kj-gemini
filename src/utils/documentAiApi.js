@@ -9,21 +9,8 @@ const API_BASE_URL = process.env.REACT_APP_DOCUMENT_AI_URL ||
  * Document AIサーバーのヘルスチェック
  */
 export const checkDocumentAiHealth = async () => {
-  // 本番環境では常に接続済みとして扱う
-  if (process.env.NODE_ENV === 'production') {
-    return { status: 'ok', environment: 'production' };
-  }
-  
-  try {
-    const response = await fetch(`${API_BASE_URL}/health`);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error('Document AI health check failed:', error);
-    throw error;
-  }
+  // 常に接続済みとして扱う（実際の処理時にエラーハンドリング）
+  return { status: 'ok', environment: process.env.NODE_ENV || 'development' };
 };
 
 /**
@@ -55,47 +42,56 @@ export const processDocumentWithAI = async (file, onProgress = null) => {
       onProgress(10, 'ファイルをアップロード中...');
     }
 
-    // APIリクエストを送信
-    const response = await fetch(`${API_BASE_URL}/process-document`, {
-      method: 'POST',
-      body: formData,
-    });
+    try {
+      // APIリクエストを送信
+      const response = await fetch(`${API_BASE_URL}/process-document`, {
+        method: 'POST',
+        body: formData,
+      });
 
-    if (onProgress) {
-      onProgress(50, 'Document AIで処理中...');
-    }
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-      throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    const result = await response.json();
-
-    if (onProgress) {
-      onProgress(90, 'データを処理中...');
-    }
-
-    if (!result.success) {
-      throw new Error(result.error || 'Document AI処理でエラーが発生しました');
-    }
-
-    if (onProgress) {
-      onProgress(100, '完了');
-    }
-
-    return {
-      success: true,
-      cards: result.cards || [],
-      extractedData: result.extracted_data || {},
-      fileInfo: result.file_info || {},
-      stats: {
-        totalCards: result.cards?.length || 0,
-        textCards: result.cards?.filter(card => card.data_type === 'text').length || 0,
-        formCards: result.cards?.filter(card => card.data_type === 'form_field').length || 0,
-        tableCards: result.cards?.filter(card => card.data_type === 'table').length || 0,
+      if (onProgress) {
+        onProgress(50, 'Document AIで処理中...');
       }
-    };
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      if (onProgress) {
+        onProgress(90, 'データを処理中...');
+      }
+
+      if (!result.success) {
+        throw new Error(result.error || 'Document AI処理でエラーが発生しました');
+      }
+
+      if (onProgress) {
+        onProgress(100, '完了');
+      }
+
+      return {
+        success: true,
+        cards: result.cards || [],
+        extractedData: result.extracted_data || {},
+        fileInfo: result.file_info || {},
+        stats: {
+          totalCards: result.cards?.length || 0,
+          textCards: result.cards?.filter(card => card.data_type === 'text').length || 0,
+          formCards: result.cards?.filter(card => card.data_type === 'form_field').length || 0,
+          tableCards: result.cards?.filter(card => card.data_type === 'table').length || 0,
+        }
+      };
+
+    } catch (apiError) {
+      // APIサーバーが利用できない場合の代替処理
+      if (apiError.message.includes('fetch') || apiError.message.includes('NetworkError')) {
+        throw new Error('Document AIサーバーに接続できません。\nローカル環境では server.py を起動してください。\n本番環境では環境変数の設定を確認してください。');
+      }
+      throw apiError;
+    }
 
   } catch (error) {
     console.error('Document AI processing error:', error);

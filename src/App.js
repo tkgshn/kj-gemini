@@ -45,7 +45,7 @@ import useHistory from './hooks/useHistory';const App = () => {
   const [showDocumentAiModal, setShowDocumentAiModal] = useState(false);
   const [selectedDocumentFile, setSelectedDocumentFile] = useState(null);
   const [documentAiProgress, setDocumentAiProgress] = useState(null);
-  const [isDocumentAiServerReady, setIsDocumentAiServerReady] = useState(false);
+  const [isDocumentAiServerReady, setIsDocumentAiServerReady] = useState(true);
   const [documentOcrResults, setDocumentOcrResults] = useState(null);
   const [documentModalStep, setDocumentModalStep] = useState('upload'); // 'upload', 'preview', 'results', 'markdown-preview'
   const [markdownPreviewData, setMarkdownPreviewData] = useState(null);
@@ -137,31 +137,7 @@ import useHistory from './hooks/useHistory';const App = () => {
     }
   }, [showInputModal, sourceType]);
 
-  // Document AIサーバーのヘルスチェック
-  useEffect(() => {
-    const checkDocumentAiServerHealth = async () => {
-      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      
-      // 本番環境ではDocument AI機能を無効化（ローカル開発時のみ有効）
-      if (!isLocalhost) {
-        console.log('Production environment detected - Document AI disabled');
-        setIsDocumentAiServerReady(false);
-        return;
-      }
-
-      // ローカル環境でのみDocument AIサーバーをチェック
-      try {
-        await checkDocumentAiHealth();
-        setIsDocumentAiServerReady(true);
-        console.log('Document AI server connected successfully');
-      } catch (error) {
-        console.warn('Document AI server not available:', error.message);
-        setIsDocumentAiServerReady(false);
-      }
-    };
-
-    checkDocumentAiServerHealth();
-  }, []);
+  // Document AI機能は常に有効（実際の処理時にエラーハンドリング）
 
   // Helper function to detect if input text is JSON format for proposal sheets
   const isProposalSheetJSON = (text) => {
@@ -748,10 +724,6 @@ ${transcriptionText}
       return;
     }
 
-    if (!isDocumentAiServerReady) {
-      setError("Document AIサーバーが利用できません。サーバーが起動していることを確認してください。");
-      return;
-    }
 
     setIsLoading(true);
     setError(null);
