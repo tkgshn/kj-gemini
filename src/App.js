@@ -141,7 +141,11 @@ import useHistory from './hooks/useHistory';const App = () => {
   useEffect(() => {
     const checkDocumentAiServerHealth = async () => {
       // 本番環境でDocument AI URLが設定されていない場合は無効化
-      if (!process.env.REACT_APP_DOCUMENT_AI_URL && window.location.hostname !== 'localhost') {
+      const documentAiUrl = process.env.REACT_APP_DOCUMENT_AI_URL;
+      const isLocalhost = window.location.hostname === 'localhost';
+      
+      // 環境変数が未設定または空文字で、かつ本番環境の場合はDocument AI機能を無効化
+      if ((!documentAiUrl || documentAiUrl.trim() === '') && !isLocalhost) {
         setIsDocumentAiServerReady(false);
         return;
       }
