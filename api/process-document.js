@@ -170,7 +170,7 @@ export default async function handler(req, res) {
 
     // Parse form data
     const { files } = await parseForm(req);
-    const file = files.file;
+    const file = Array.isArray(files.file) ? files.file[0] : files.file;
 
     if (!file) {
       return res.status(400).json({ error: 'ファイルが見つかりません' });
@@ -178,9 +178,10 @@ export default async function handler(req, res) {
 
     // Validate file type
     const supportedTypes = ['application/pdf', 'image/png', 'image/jpeg'];
-    if (!supportedTypes.includes(file.mimetype)) {
+    const fileType = file.type || file.mimetype;
+    if (!supportedTypes.includes(fileType)) {
       return res.status(400).json({ 
-        error: `サポートされていないファイル形式です: ${file.mimetype}` 
+        error: `サポートされていないファイル形式です: ${fileType}` 
       });
     }
 
@@ -188,7 +189,7 @@ export default async function handler(req, res) {
     const fileBase64 = await fileToBase64(file.filepath);
 
     // Process with Document AI
-    const document = await processWithDocumentAI(fileBase64, file.mimetype);
+    const document = await processWithDocumentAI(fileBase64, fileType);
 
     // Extract cards
     const cards = extractCards(document);
@@ -207,7 +208,7 @@ export default async function handler(req, res) {
       file_info: {
         name: file.originalFilename,
         size: file.size,
-        type: file.mimetype
+        type: fileType
       }
     });
 
