@@ -6,9 +6,9 @@ import ReactMarkdown from 'react-markdown';
 // Import configurations and utilities
 import { callGeminiAPI } from './utils/geminiApi';
 import { cardsAPI, groupsAPI, getUserId } from './utils/localStorageApi';
-import { processDocumentWithAI, validateDocumentFile, checkDocumentAiHealth } from './utils/documentAiApi';
+import { processDocumentWithAI, validateDocumentFile, checkDocumentAiHealth, formatFileSize } from './utils/documentAiApi';
 import { sampleDiscussionText, sampleProposalSheetText } from './data/sampleData';
-import { BotIcon, Trash2Icon, DatabaseIcon, ScanTextIcon, StickyNoteIcon, XIcon } from './components/Icons';
+import { BotIcon, Trash2Icon, DatabaseIcon, MicIcon, ScanTextIcon, StickyNoteIcon, XIcon } from './components/Icons';
 import ProgressBar from './components/ProgressBar';
 import FileDropZone from './components/FileDropZone';
 import DocumentPreview from './components/DocumentPreview';
@@ -49,6 +49,12 @@ import useHistory from './hooks/useHistory';const App = () => {
   const [documentOcrResults, setDocumentOcrResults] = useState(null);
   const [documentModalStep, setDocumentModalStep] = useState('upload'); // 'upload', 'preview', 'results', 'markdown-preview'
   const [markdownPreviewData, setMarkdownPreviewData] = useState(null);
+
+  // 音声文字起こし関連の状態
+  const [showAudioModal, setShowAudioModal] = useState(false);
+  const [selectedAudioFile, setSelectedAudioFile] = useState(null);
+  const [showWhisperAXModal, setShowWhisperAXModal] = useState(false);
+  const [whisperAXResult, setWhisperAXResult] = useState(null);
 
   // History management
   const { saveState, undo, redo, canUndo, canRedo } = useHistory();
@@ -474,9 +480,230 @@ JSON:`;
     }
   };
 
+  // Create cards from text (reusable function)
+  const createCardsFromText = async (text, options = {}) => {
+    const {
+      sourceType: cardSourceType = 'audio_transcription',
+      fileName = '',
+      autoSaveAfterCreation = false
+    } = options;
 
+    console.log(`🔍 [カード作成] 開始: sourceType=${cardSourceType}, textLength=${text.length}`);
 
+    const prompt = `あなたは会議の議事録を分析するアシスタントです。以下のテキストから「重要な意見」「参加者の発言」「提案内容」「課題点」に該当する部分のみを抽出してください。
 
+抽出した各内容を、KJ法のカードとして使用できるよう、簡潔で意味の通じる独立したフレーズまたは短い文に分割してください。
+
+さらに、各発言・意見・提案について、それが誰の立場からの発言かを以下の分類で判定してください：
+- "住民": 住民、市民、参加者、地域住民などからの意見や要望
+- "行政": 市役所、行政職員、自治体からの説明や提案
+- "地域団体": 自治会、商店会、NPO、地域組織からの意見
+- "専門家": 有識者、コンサルタント、専門家からの助言
+- "不明": 発言者の立場が特定できない場合
+
+また、各内容が「課題・問題点」なのか「解決策・提案」なのかも判定してください。
+
+結果を以下の形式のJSONで返してください：
+{
+  "segments": [
+    {
+      "text": "抽出した内容",
+      "perspective": "住民|行政|地域団体|専門家|不明",
+      "type": "課題|解決策",
+      "reasoning": "判定理由の簡潔な説明"
+    }
+  ]
+}
+
+テキスト:
+\`\`\`
+${text}
+\`\`\`
+
+JSON:`;
+
+    const schema = {
+      type: "OBJECT",
+      properties: {
+        segments: {
+          type: "ARRAY",
+          items: {
+            type: "OBJECT",
+            properties: {
+              text: { type: "STRING" },
+              perspective: { type: "STRING", enum: ["住民", "行政", "地域団体", "専門家", "不明"] },
+              type: { type: "STRING", enum: ["課題", "解決策"] },
+              reasoning: { type: "STRING" }
+            },
+            required: ["text", "perspective", "type"]
+          }
+        }
+      },
+      required: ["segments"]
+    };
+
+    try {
+      const jsonResponse = await callGeminiAPI(prompt, schema);
+      const segments = jsonResponse?.segments;
+
+      if (segments && segments.length > 0) {
+        let currentX = 50, currentY = 50;
+        const cardWidth = 180, cardHeight = 100, spacing = 20;
+        const sourceIdentifierBase = `${cardSourceType}_${Date.now()}`;
+
+        const newCardsData = [];
+        for (let i = 0; i < segments.length; i++) {
+          const segment = segments[i];
+
+          const solutionPerspectiveMap = {
+            "住民": "自分ができること",
+            "行政": "行政ができること", 
+            "地域団体": "地域ができること",
+            "専門家": null,
+            "不明": null
+          };
+
+          newCardsData.push({
+            text: segment.text || segment,
+            x: currentX,
+            y: currentY,
+            width: cardWidth,
+            height: cardHeight,
+            groupId: null,
+            sourceType: cardSourceType,
+            sourceIdentifier: `${sourceIdentifierBase}_seg${i}`,
+            isChallenge: segment.type === "課題",
+            solutionPerspective: solutionPerspectiveMap[segment.perspective] || null,
+            perspectiveRaw: segment.perspective,
+            typeRaw: segment.type,
+            reasoning: segment.reasoning,
+          });
+
+          currentX += cardWidth + spacing;
+          if (currentX + cardWidth > (window.innerWidth * 0.8) / scale - pan.x) {
+            currentX = 50;
+            currentY += cardHeight + spacing;
+          }
+        }
+
+        const newCards = cardsAPI.addMultiple(newCardsData);
+        const updatedCards = [...cards, ...newCards];
+        setCards(updatedCards);
+        
+        if (autoSaveAfterCreation) {
+          saveState(updatedCards, groups, `Added ${newCards.length} cards from ${cardSourceType}`);
+        }
+
+        console.log(`✅ [カード作成] 完了: ${newCards.length}枚のカード作成`);
+        return newCards;
+      } else {
+        console.warn('❌ [カード作成] セグメントが抽出されませんでした');
+        return [];
+      }
+    } catch (e) {
+      console.error("カード作成エラー:", e);
+      throw e;
+    }
+  };
+
+  // Audio file selection handler
+  const handleAudioFileSelect = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      const supportedTypes = ['audio/wav', 'audio/mp3', 'audio/aac', 'audio/ogg', 'audio/flac', 'audio/webm', 'audio/m4a', 'audio/mpeg'];
+      if (!supportedTypes.includes(file.type) && !file.name.match(/\.(mp3|wav|m4a|aac|ogg|flac|webm|mpeg)$/i)) {
+        setError("サポートされていないファイル形式です。対応形式: MP3, WAV, M4A, AAC, OGG, FLAC, WebM");
+        return;
+      }
+
+      const warningSize = 500 * 1024 * 1024; // 500MB
+      const maxSize = 2 * 1024 * 1024 * 1024; // 2GB
+
+      if (file.size > maxSize) {
+        setError(`ファイルサイズが大きすぎます。2GB以下のファイルを選択してください。（現在: ${formatFileSize(file.size)}）`);
+        return;
+      }
+
+      if (file.size > warningSize) {
+        const chunks = Math.ceil(file.size / (100 * 1024 * 1024));
+        setError(`⚠️ 大きなファイル（${formatFileSize(file.size)}）が選択されました。${chunks}個のチャンクに分割して処理します。`);
+      } else {
+        setError(null);
+      }
+
+      setSelectedAudioFile(file);
+    }
+  };
+
+  // WhisperAX processing function
+  const handleWhisperAXProcess = async (transcriptionText) => {
+    if (!transcriptionText.trim()) {
+      setError("テキストが空です。");
+      return null;
+    }
+
+    setIsLoading(true);
+    setLoadingMessage("音声文字起こし内容から議事録を生成中...");
+    setError(null);
+
+    const prompt = `以下は、自分ごと化会議の音声を文字起こししたものです。これをもとに会議の概要をなるべく情報量が大きくなるようにまとめてください。前後の文脈を踏まえた上で、構造化してください。論点の整理は、賛成意見や反対意見などを整理し、インサイトは別に書いてください。会議の全部のログを清書したもの・反対意見の構造化などのまとめは別にまとめてください。
+
+文字起こしテキスト:
+\`\`\`
+${transcriptionText}
+\`\`\`
+
+以下の形式で返してください：
+1. 会議の概要
+2. 議論の論点整理
+3. 賛成意見・反対意見の構造化
+4. インサイト
+5. 会議ログの清書`;
+
+    try {
+      const response = await callGeminiAPI(prompt);
+      return response;
+    } catch (error) {
+      console.error("WhisperAX処理エラー:", error);
+      setError(`エラー: ${error.message}`);
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Generate cards from WhisperAX minutes
+  const handleWhisperAXCardGeneration = async (minutesText) => {
+    if (!minutesText.trim()) {
+      setError("議事録が空です。");
+      return;
+    }
+
+    setIsLoading(true);
+    setLoadingMessage("議事録からカードを生成中...");
+    setError(null);
+
+    try {
+      const newCards = await createCardsFromText(minutesText, {
+        sourceType: 'audio_transcription',
+        fileName: 'WhisperAX文字起こし',
+        autoSaveAfterCreation: true
+      });
+
+      setSuccessMessage(`議事録から${newCards.length}枚のカードを作成しました！`);
+      setTimeout(() => setSuccessMessage(''), 3000);
+      
+      // Close modal
+      setShowWhisperAXModal(false);
+      setWhisperAXResult(null);
+      setInputText('');
+    } catch (error) {
+      console.error("カード生成エラー:", error);
+      setError(`カード生成エラー: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Document AI file selection handler (for both input and drag&drop)
   const handleDocumentFileSelect = (file) => {
@@ -1649,6 +1876,18 @@ ${text}
                       </span>
                     </button>
 
+                    <button
+                      onClick={() => setShowWhisperAXModal(true)}
+                      className="w-full px-4 py-3 text-sm font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors disabled:opacity-50"
+                      disabled={isLoading}
+                      title="WhisperAXを使用して音声文字起こしを実行"
+                    >
+                      <MicIcon />
+                      <span className="ml-2">
+                        「会議音声の文字起こしデータ」からカードを作成
+                      </span>
+                    </button>
+
                   </div>
 
                   {/* Statistics */}
@@ -2025,6 +2264,94 @@ ${text}
           </div>
         )}
 
+        {/* WhisperAX Modal */}
+        {showWhisperAXModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+              <h2 className="text-lg font-semibold mb-4">WhisperAX音声文字起こしから議事録・カードを作成</h2>
+
+              {!whisperAXResult ? (
+                <>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      音声文字起こしテキストを入力してください
+                    </label>
+                    <textarea
+                      className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none"
+                      rows="12"
+                      placeholder="[0.00 --> 26.00] <|startoftranscript|><|ja|><|transcribe|><|0.00|><|endoftext|>
+[54.58 --> 55.98] <|startoftranscript|><|ja|><|transcribe|><|0.00|>(拍手<|endoftext|>
+...
+文字起こしテキストをここに貼り付けてください"
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                    />
+                  </div>
+
+                  {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
+
+                  <div className="flex justify-end space-x-2">
+                    <button
+                      onClick={() => {
+                        setShowWhisperAXModal(false);
+                        setError(null);
+                        setInputText('');
+                        setWhisperAXResult(null);
+                      }}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300"
+                    >
+                      キャンセル
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const result = await handleWhisperAXProcess(inputText);
+                        if (result) {
+                          setWhisperAXResult(result);
+                        }
+                      }}
+                      className="px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700 disabled:opacity-50"
+                      disabled={isLoading || !inputText.trim()}
+                    >
+                      {isLoading ? '処理中...' : '議事録を生成'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mb-4">
+                    <h3 className="text-md font-medium text-gray-800 mb-3">生成された議事録</h3>
+                    <div className="bg-gray-50 p-4 rounded-lg border max-h-96 overflow-y-auto">
+                      <div className="prose prose-sm max-w-none text-gray-700">
+                        <ReactMarkdown>{whisperAXResult}</ReactMarkdown>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end space-x-2">
+                    <button
+                      onClick={() => {
+                        setShowWhisperAXModal(false);
+                        setError(null);
+                        setInputText('');
+                        setWhisperAXResult(null);
+                      }}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300"
+                    >
+                      キャンセル
+                    </button>
+                    <button
+                      onClick={() => handleWhisperAXCardGeneration(whisperAXResult)}
+                      className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50"
+                      disabled={isLoading}
+                    >
+                      {isLoading ? 'カード生成中...' : 'この議事録からカードを作成'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {isLoading && (
           <div className="absolute inset-0 bg-gray-800 bg-opacity-75 flex flex-col items-center justify-center z-[100]">

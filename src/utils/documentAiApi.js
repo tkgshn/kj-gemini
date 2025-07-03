@@ -2,7 +2,7 @@
  * Google Cloud Document AI API utilities
  */
 
-const API_BASE_URL = 'http://localhost:5001/api';
+const API_BASE_URL = process.env.REACT_APP_DOCUMENT_AI_URL || 'http://localhost:5001/api';
 
 /**
  * Document AIサーバーのヘルスチェック
