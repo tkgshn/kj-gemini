@@ -149,3 +149,4 @@ server.log
 # Temporary files
 temp/
 tmp/
+.vercel

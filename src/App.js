@@ -6,7 +6,6 @@ import ReactMarkdown from 'react-markdown';
 // Import configurations and utilities
 import { callGeminiAPI } from './utils/geminiApi';
 import { cardsAPI, groupsAPI, getUserId } from './utils/localStorageApi';
-import { transcribeAudioWithGemini, transcribeAudioWithFilesAPI, transcribeAudioChunksWithGemini, splitAudioFileIntoChunks, isGeminiSpeechReady } from './utils/geminiSpeechApi';
 import { processDocumentWithAI, validateDocumentFile, formatFileSize, checkDocumentAiHealth } from './utils/documentAiApi';
 import { sampleDiscussionText, sampleProposalSheetText } from './data/sampleData';
 import { BotIcon, Trash2Icon, DatabaseIcon, MicIcon, ScanTextIcon, StickyNoteIcon, XIcon } from './components/Icons';
@@ -33,10 +32,6 @@ import useHistory from './hooks/useHistory';const App = () => {
   const [selectedCards, setSelectedCards] = useState([]);
   const [selectedGroups, setSelectedGroups] = useState([]);
   const [showInputModal, setShowInputModal] = useState(false);
-  const [showAudioModal, setShowAudioModal] = useState(false);
-  const [showWhisperAXModal, setShowWhisperAXModal] = useState(false);
-  const [whisperAXResult, setWhisperAXResult] = useState(null);
-  const [selectedAudioFile, setSelectedAudioFile] = useState(null);
   const [editingCard, setEditingCard] = useState(null);
   const [currentView, setCurrentView] = useState('canvas'); // 'canvas' or 'json'
 
