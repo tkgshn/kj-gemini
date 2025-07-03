@@ -140,19 +140,20 @@ import useHistory from './hooks/useHistory';const App = () => {
   // Document AIサーバーのヘルスチェック
   useEffect(() => {
     const checkDocumentAiServerHealth = async () => {
-      // 本番環境でDocument AI URLが設定されていない場合は無効化
-      const documentAiUrl = process.env.REACT_APP_DOCUMENT_AI_URL;
-      const isLocalhost = window.location.hostname === 'localhost';
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       
-      // 環境変数が未設定または空文字で、かつ本番環境の場合はDocument AI機能を無効化
-      if ((!documentAiUrl || documentAiUrl.trim() === '') && !isLocalhost) {
+      // 本番環境ではDocument AI機能を無効化（ローカル開発時のみ有効）
+      if (!isLocalhost) {
+        console.log('Production environment detected - Document AI disabled');
         setIsDocumentAiServerReady(false);
         return;
       }
 
+      // ローカル環境でのみDocument AIサーバーをチェック
       try {
         await checkDocumentAiHealth();
         setIsDocumentAiServerReady(true);
+        console.log('Document AI server connected successfully');
       } catch (error) {
         console.warn('Document AI server not available:', error.message);
         setIsDocumentAiServerReady(false);
