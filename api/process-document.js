@@ -203,12 +203,24 @@ export default async function handler(req, res) {
       cards,
       extracted_data: {
         text: document.text || '',
-        pages: document.pages?.length || 0
+        pages: document.pages?.length || 0,
+        entities: document.entities || [],
+        form_fields: document.pages?.[0]?.formFields?.map(field => ({
+          name: field.fieldName?.textAnchor?.content || '',
+          value: field.fieldValue?.textAnchor?.content || ''
+        })) || [],
+        tables: document.pages?.map(page => 
+          page.tables?.map(table => 
+            table.bodyRows?.map(row => 
+              row.cells?.map(cell => cell.layout?.textAnchor?.content || '')
+            )
+          )
+        ).flat().filter(Boolean) || []
       },
       file_info: {
-        name: file.originalFilename,
-        size: file.size,
-        type: fileType
+        filename: file.originalFilename,
+        mime_type: fileType,
+        size: file.size
       }
     });
 
