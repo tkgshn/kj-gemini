@@ -140,6 +140,12 @@ import useHistory from './hooks/useHistory';const App = () => {
   // Document AIサーバーのヘルスチェック
   useEffect(() => {
     const checkDocumentAiServerHealth = async () => {
+      // 本番環境でDocument AI URLが設定されていない場合は無効化
+      if (!process.env.REACT_APP_DOCUMENT_AI_URL && window.location.hostname !== 'localhost') {
+        setIsDocumentAiServerReady(false);
+        return;
+      }
+
       try {
         await checkDocumentAiHealth();
         setIsDocumentAiServerReady(true);
