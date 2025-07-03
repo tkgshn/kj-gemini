@@ -150,3 +150,11 @@ server.log
 temp/
 tmp/
 .vercel
+
+# Google Cloud credentials
+service-account-key.json
+*.json
+!package.json
+!package-lock.json
+!vercel.json
+!public/manifest.json

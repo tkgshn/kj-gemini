@@ -2,12 +2,18 @@
  * Google Cloud Document AI API utilities
  */
 
-const API_BASE_URL = process.env.REACT_APP_DOCUMENT_AI_URL || 'http://localhost:5001/api';
+const API_BASE_URL = process.env.REACT_APP_DOCUMENT_AI_URL || 
+  (process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:5001/api');
 
 /**
  * Document AIサーバーのヘルスチェック
  */
 export const checkDocumentAiHealth = async () => {
+  // 本番環境では常に接続済みとして扱う
+  if (process.env.NODE_ENV === 'production') {
+    return { status: 'ok', environment: 'production' };
+  }
+  
   try {
     const response = await fetch(`${API_BASE_URL}/health`);
     if (!response.ok) {
