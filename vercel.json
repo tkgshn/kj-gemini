@@ -1,17 +1,5 @@
 {
-  "functions": {
-    "api/health.js": {
-      "runtime": "@vercel/node"
-    },
-    "api/process-document.js": {
-      "runtime": "@vercel/node"
-    }
-  },
   "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
-    },
     {
       "source": "/(.*)",
       "destination": "/index.html"
