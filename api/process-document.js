@@ -46,12 +46,21 @@ const fileToBase64 = async (filePath) => {
  */
 const processWithDocumentAI = async (fileBase64, mimeType) => {
   // Initialize Document AI client
-  const client = new DocumentProcessorServiceClient({
+  let clientOptions = {
     projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
-    keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS, // Path to service account key
-  });
+  };
 
-  const name = `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/locations/${process.env.DOCUMENT_AI_LOCATION}/processors/${process.env.DOCUMENT_AI_PROCESSOR_ID}`;
+  // In production (Vercel), use service account key from environment variable
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
+    clientOptions.credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
+  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    // In development, use file path
+    clientOptions.keyFilename = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  }
+
+  const client = new DocumentProcessorServiceClient(clientOptions);
+
+  const name = `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/locations/${process.env.GOOGLE_CLOUD_LOCATION}/processors/${process.env.GOOGLE_CLOUD_PROCESSOR_ID}`;
 
   const request = {
     name,
@@ -155,7 +164,7 @@ export default async function handler(req, res) {
 
   try {
     // Check environment variables
-    if (!process.env.GOOGLE_CLOUD_PROJECT_ID || !process.env.DOCUMENT_AI_PROCESSOR_ID) {
+    if (!process.env.GOOGLE_CLOUD_PROJECT_ID || !process.env.GOOGLE_CLOUD_PROCESSOR_ID) {
       throw new Error('Google Cloud環境変数が設定されていません');
     }
 
